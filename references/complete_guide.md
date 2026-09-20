@@ -627,10 +627,12 @@ The way around that restriction is to set a variable inside the block and branch
 	*error
 		>> lookupFailed = 1
 
-*if: lookupFailed
+*if: lookupFailed = 1
 	Sorry, the forecast is unavailable right now.
 	*goto: skipWeather
 ```
+
+Note the `= 1`. `*if: lookupFailed` would fire for EVERYONE here, because the flag was initialised to `0` and a bare `*if:` tests definedness, not truth - see the definedness rule in "Critical Syntax Rules". Initialising the flag before the call is still right; testing it with `= 1` is what makes the guard work.
 
 `*service:` is also rejected inside `*events` handlers.
 
@@ -1010,6 +1012,8 @@ Common sub-keywords in the full language specification include:
 		*image: {preloadUrl}
 		*classes: imagesToPreload
 ```
+
+- **A class name that looks like advertising can be REMOVED from the page by a content blocker, and it looks exactly like a CSS bug.** A heading styled with a class beginning `share-` rendered on desktop and was invisible on iPhone. The markup was byte-identical, the stylesheet was verified present, and forcing `display`, `visibility`, `opacity`, `z-index` and `max-height` all did nothing - which is the signature of an element being removed from the document rather than styled out of view. Renaming the class fixed it instantly. Content and ad blockers match on class and id names, so avoid `share-`, `ad-`, `ads-`, `banner-`, `sponsor-`, `promo-` and `social-` prefixes for anything that must render; pick a neutral hook like `sc-title`. **Diagnostic:** if an element is missing on one device only and no style change brings it back, check whether the node exists in the DOM at all before spending more time on CSS.
 
 ## Common Misconceptions
 
