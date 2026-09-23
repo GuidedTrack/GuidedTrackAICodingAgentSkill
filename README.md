@@ -22,13 +22,9 @@ git clone https://github.com/willfind/GuidedTrackAICodingAgentSkill.git ~/.claud
 
 Works on Windows too: the agent drives the `gt` CLI via Git Bash, with details in SKILL.md's Windows notes.
 
-**Then install `jq`.** Pushing, pulling, and downloading run data need it. Check with `command -v jq || ls ~/bin/jq ~/bin/jq.exe`. If it's missing:
+**`jq` is also required.** `gt` uses it for pushing, pulling, and downloading run data. You don't need to install it yourself: the agent checks for it and, if it's missing, downloads a private copy to `~/bin/jq` (no admin password needed) the first time it's needed. If you'd rather have a system-wide copy, install it yourself first: `brew install jq` (macOS), `sudo apt install jq` (Debian/Ubuntu), or `winget install jqlang.jq` (Windows).
 
-- macOS: `brew install jq`
-- Linux (no sudo needed): `mkdir -p ~/bin && curl -fsSL -o ~/bin/jq https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64 && chmod +x ~/bin/jq` (use `jq-linux-arm64` on ARM)
-- Windows (Git Bash): `mkdir -p ~/bin && curl -fsSL -o ~/bin/jq.exe https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe`
-
-**AI agents installing this skill:** installing jq is a required install step, not an optional extra. After cloning, run the check above. If jq is missing, install it with the matching command, and then tell the user what you installed.
+**AI agents installing this skill:** also check for jq and install it if it's missing, following the jq steps under "Pushing to GuidedTrack → Prerequisites" in SKILL.md. Then tell the user what you installed and where, as described there.
 
 ## Use
 
