@@ -151,7 +151,7 @@ chmod +x ~/bin/gt
 
 - macOS Homebrew: `brew install jq`
 - macOS direct download: `curl -fsSL -o ~/bin/jq https://github.com/jqlang/jq/releases/latest/download/jq-macos-arm64 && chmod +x ~/bin/jq` (use `jq-macos-amd64` on Intel)
-- Linux: install via the system package manager, or download `jq-linux-amd64` the same way.
+- Linux:  `curl -fsSL -o ~/bin/jq https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64 && chmod +x ~/bin/jq` (use `jq-linux-arm64` on ARM).
 - Windows: see the Windows notes below.
 
 Do not proceed until both `gt` and `jq` are reachable (either on PATH or via `~/bin/`).
