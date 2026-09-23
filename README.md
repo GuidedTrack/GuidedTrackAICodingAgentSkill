@@ -52,7 +52,7 @@ The skill improves regularly — run `git pull` in the cloned folder now and the
 | `references/complete_guide.md` | The GuidedTrack language guide: syntax, patterns, keywords, pitfalls |
 | `references/custom-services.md` | Custom services: server-side JavaScript routes, the `guidedtrack-db` database library, and calling them with `*service:` |
 | `references/gtlint.md` | Using GTLint, an optional third-party linter/formatter for `.gt` files, to automate most of the validation checklist |
-| `bin/gt` | The GuidedTrack CLI (bash), with portable fixes and an added `pull` subcommand. Optional install: `mkdir -p ~/bin && cp bin/gt ~/bin/gt && chmod +x ~/bin/gt` (needs `jq`; per-OS instructions in SKILL.md) |
+| `bin/gt` | The GuidedTrack CLI (bash), with portable fixes and an added `pull` subcommand. Optional install: `mkdir -p ~/bin && cp bin/gt ~/bin/gt && chmod +x ~/bin/gt` (needs `jq`; installed in the install step above; per-OS instructions in SKILL.md) |
 | `agents/openai.yaml` | Codex metadata (ignored by Claude Code) |
 
 ## Provenance
