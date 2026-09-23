@@ -22,6 +22,14 @@ git clone https://github.com/willfind/GuidedTrackAICodingAgentSkill.git ~/.claud
 
 Works on Windows too: the agent drives the `gt` CLI via Git Bash, with details in SKILL.md's Windows notes.
 
+**Then install `jq`.** Pushing, pulling, and downloading run data need it. Check with `command -v jq || ls ~/bin/jq ~/bin/jq.exe`. If it's missing:
+
+- macOS: `brew install jq`
+- Linux (no sudo needed): `mkdir -p ~/bin && curl -fsSL -o ~/bin/jq https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64 && chmod +x ~/bin/jq` (use `jq-linux-arm64` on ARM)
+- Windows (Git Bash): `mkdir -p ~/bin && curl -fsSL -o ~/bin/jq.exe https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe`
+
+**AI agents installing this skill:** installing jq is a required install step, not an optional extra. After cloning, run the check above. If jq is missing, install it with the matching command, and then tell the user what you installed.
+
 ## Use
 
 Nothing to configure — Claude Code loads the skill automatically whenever a task involves GuidedTrack, or invoke it explicitly with `/guidedtrack-builder`. To confirm it's installed, ask Claude "what skills do you have?"
