@@ -236,6 +236,7 @@ A successful push prints `>> Updating "<name>" (id: <id>)... done` and the serve
 If the `gt` script itself misbehaves, replicate its two API calls directly with curl (validated on Mac and Windows; from Windows PowerShell call `curl.exe` explicitly, since bare `curl` in PowerShell 5.1 is an alias for `Invoke-WebRequest`):
 
 ```bash
+export PATH="$HOME/bin:$PATH"   # find a ~/bin jq install
 # 1. Find the program id (URL-encode the name; spaces become %20):
 curl -sS -u '<email>:<password>' \
   "https://www.guidedtrack.com/programs.json?query=<url-encoded-name>" \
@@ -268,6 +269,7 @@ After any push, open or run the program once, or have the user do so, and read t
 **Checking compilation without a browser.** An agent cannot read an error banner, but the same information is available over the API — this is what `gt`'s own `build` subcommand does internally. Every call is authenticated:
 
 ```bash
+export PATH="$HOME/bin:$PATH"   # find a ~/bin jq install
 E='<email>'; P='<password>'
 KEY=$(curl -sS -u "$E:$P" "https://www.guidedtrack.com/programs.json?query=<url-encoded-name>" \
   | jq -r 'map(select(.name=="<exact program name>"))[0].key')
@@ -309,7 +311,7 @@ Source: [Sharing the "Preview" Version of Your Program](https://docs.guidedtrack
 ### Windows notes
 
 - `gt` is a Bash script: on Windows run it under Git Bash — which is what the Claude Code Bash tool uses. **Never PowerShell or cmd.** In Git Bash, `~` resolves to `C:\Users\<name>`, so `~/bin` and `~/guidedtrack` are ordinary Windows folders.
-- jq is `jq.exe` on Windows; Git Bash resolves the bare name `jq` to it automatically. Install without admin rights: `curl -fsSL -o ~/bin/jq.exe https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe` — or via winget (PowerShell/cmd, installs onto PATH): `winget install jqlang.jq`.
+- jq is `jq.exe` on Windows; Git Bash resolves the bare name `jq` to it automatically. The installer in Prerequisites handles Windows (it saves `~/bin/jq.exe`). Alternative the user can run in PowerShell/cmd: `winget install jqlang.jq`.
 - This skill's `bin/gt` contains the fixes that make Windows work (native jq.exe cannot read bash process substitution; unquoted selectors word-split names with spaces). Always install this skill's copy.
 
 ### Edge Cases
