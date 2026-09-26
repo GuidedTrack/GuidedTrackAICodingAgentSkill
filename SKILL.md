@@ -123,7 +123,7 @@ When the user asks to upload, push, or test a program on GuidedTrack.com, follow
 
 ### Prerequisites
 
-**Before proceeding, make sure `gt` and `jq` are installed. If either is missing, install it yourself; don't ask the user to.**
+**Before proceeding, make sure `gt` and `jq` are both available.** Install `gt` yourself without asking — it is this skill's own script, copied into the user's `~/bin`. **jq is different: it is third-party software, so ask permission before installing it** (wording below).
 
 ```bash
 # Look on PATH and in ~/bin. The Claude Code Bash tool often lacks ~/bin on PATH,
@@ -132,7 +132,7 @@ command -v gt || ls ~/bin/gt 2>/dev/null
 command -v jq || ls ~/bin/jq* 2>/dev/null
 ```
 
-**If `gt` is missing:** install this skill's copy. It contains portable fixes (a plain jq filter argument instead of bash process substitution, glob-safe selector handling so program names with spaces work, and a lookup that finds jq in `~/bin` by itself). Do not substitute an older copy.
+**Install this skill's `gt` every time, even if `~/bin/gt` already exists.** Copying is instant and an older copy is worse than no copy: the fixes are cumulative (a plain jq filter argument instead of bash process substitution, glob-safe selector handling so program names with spaces work, and a lookup that finds jq in `~/bin` by itself), and a stale `gt` fails in ways that look like a GuidedTrack problem rather than an out-of-date script. In particular, a `gt` predating the `~/bin` jq lookup cannot find a jq that lives only in `~/bin`, which is exactly where these instructions put it.
 
 ```bash
 mkdir -p ~/bin
@@ -140,7 +140,15 @@ cp "<path-to-this-skill>/bin/gt" ~/bin/gt
 chmod +x ~/bin/gt
 ```
 
-**If `jq` is missing:** download a standalone copy into `~/bin`. This needs no sudo and works on Linux, macOS and Windows Git Bash:
+**If `jq` is missing: ASK THE USER BEFORE INSTALLING IT.** Never download it silently. Say what it is, why `gt` needs it, and exactly what you would put where, then wait for a yes. Something like:
+
+> `gt` needs a small free tool called **jq** in order to talk to GuidedTrack. GuidedTrack's API answers in JSON, a structured text format, and jq is what reads it — so every push, pull, and run-data download goes through jq. Without it, those commands can't work.
+>
+> May I install it for you? It's a single file, about 1 MB, downloaded from jq's official releases. It would go in `~/bin/jq`, needs no admin password, changes nothing else on your computer, and you can remove it later by deleting that one file. If you'd rather install it system-wide yourself instead: `brew install jq` (macOS), `sudo apt install jq` (Debian/Ubuntu), or `winget install jqlang.jq` (Windows).
+
+**If they say no, do not install it.** Tell them that pushing, pulling and downloading run data will not work until jq is available, and carry on with whatever else the task needs — writing and checking `.gt` code needs neither `gt` nor jq.
+
+**Once they agree,** download a standalone copy into `~/bin`. This needs no sudo and works on Linux, macOS and Windows Git Bash:
 
 ```bash
 mkdir -p ~/bin
@@ -159,16 +167,23 @@ curl -fsSL -o "$out" "https://github.com/jqlang/jq/releases/latest/download/$f" 
 
 If the download fails or is blocked (for example on a company-managed computer), stop and ask the user to install jq themselves: `brew install jq` (macOS), `sudo apt install jq` (Debian/Ubuntu), or `winget install jqlang.jq` (Windows).
 
-**After installing jq, tell the user in plain words.** Don't just say "installed jq". Use something like:
+**After installing jq, confirm in plain words what you did.** Don't just say "installed jq":
 
-> I installed jq, a small tool that `gt` needs, at `~/bin/jq`. You don't need to use it yourself. If you ever want it in your own terminal, run `brew install jq` (Mac) or `sudo apt install jq` (Linux).
+> Installed jq at `~/bin/jq`. You won't need to use it yourself — `gt` calls it. To remove it, delete that file.
 
 Do not edit the user's shell startup files (`.bashrc`, `.profile`, `.zshrc`) unless they ask.
 
-**Calling `gt` and `jq`:** call `gt` by its absolute path (`~/bin/gt`). In any command where you run `jq` yourself, put `export PATH="$HOME/bin:$PATH"` first:
+**Calling `gt` and `jq`.** Call `gt` by its absolute path; it adds `~/bin` to PATH itself, so it finds a `~/bin` jq without help:
 
 ```bash
 GT_ENV=production ~/bin/gt push -o "<program name>"
+```
+
+When YOU run `jq` directly — the curl fallbacks below do — export the PATH first, because the Claude Code Bash tool does not have `~/bin` on PATH:
+
+```bash
+export PATH="$HOME/bin:$PATH"
+curl -sS ... | jq -r '.key'
 ```
 
 ### Non-interactive credentials (optional)

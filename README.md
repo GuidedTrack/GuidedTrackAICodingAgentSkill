@@ -13,7 +13,7 @@ Claude Code (or another agent framework that supports skills) and git. The push/
 **Claude Code, all your projects (recommended):**
 
 ```bash
-git clone https://github.com/willfind/GuidedTrackAICodingAgentSkill.git ~/.claude/skills/guidedtrack-builder
+git clone https://github.com/GuidedTrack/GuidedTrackAICodingAgentSkill.git ~/.claude/skills/guidedtrack-builder
 ```
 
 **Claude Code, one project only:** clone into `<project>/.claude/skills/guidedtrack-builder` instead (note the `.claude` — skills elsewhere in a project are not discovered). The folder name is cosmetic — the skill's name comes from SKILL.md.
@@ -22,9 +22,9 @@ git clone https://github.com/willfind/GuidedTrackAICodingAgentSkill.git ~/.claud
 
 Works on Windows too: the agent drives the `gt` CLI via Git Bash, with details in SKILL.md's Windows notes.
 
-**`jq` is also required.** `gt` uses it for pushing, pulling, and downloading run data. You don't need to install it yourself: the agent checks for it and, if it's missing, downloads a private copy to `~/bin/jq` (no admin password needed) the first time it's needed. If you'd rather have a system-wide copy, install it yourself first: `brew install jq` (macOS), `sudo apt install jq` (Debian/Ubuntu), or `winget install jqlang.jq` (Windows).
+**`jq` is also required.** It's a small free tool that reads JSON, the format GuidedTrack's API answers in, and `gt` uses it for every push, pull and run-data download. You don't have to install it yourself: the first time it's needed the agent will explain what jq is and **ask your permission**, then, if you agree, put a single ~1 MB file at `~/bin/jq` — no admin password, nothing else on your machine touched, and removable by deleting that one file. If you'd rather have a system-wide copy, install it yourself first: `brew install jq` (macOS), `sudo apt install jq` (Debian/Ubuntu), or `winget install jqlang.jq` (Windows).
 
-**AI agents installing this skill:** also check for jq and install it if it's missing, following the jq steps under "Pushing to GuidedTrack → Prerequisites" in SKILL.md. Then tell the user what you installed and where, as described there.
+**AI agents installing this skill:** also check for jq, and if it's missing follow the jq steps under "Pushing to GuidedTrack → Prerequisites" in SKILL.md — which means asking the user's permission first, then telling them what you installed and where.
 
 ## Use
 
