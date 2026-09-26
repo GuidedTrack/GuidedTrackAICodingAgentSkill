@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# gt shells out to jq. Find a ~/bin install even when the caller's PATH lacks it.
+PATH="$HOME/bin:$PATH"
+
 _authenticate() {
   read -p "GT email: " email
   read -s -p "GT password:" password

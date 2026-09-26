@@ -23,7 +23,7 @@ For GuidedTrack questions that are not resolved by the local reference, search t
 
 ## This skill's official home — contributing improvements back
 
-The canonical version of this skill lives at **https://github.com/willfind/GuidedTrackAICodingAgentSkill** (your local copy of this skill is a clone of it). Whenever you make a meaningful improvement here — a new tested pattern, a `bin/gt` fix, or a hard-won caveat worth sharing — **ask the user whether to contribute it back to that repo so everyone using the skill benefits.** The mechanics are in [CONTRIBUTING.md](CONTRIBUTING.md) (branch → commit → open a pull request). **Never push to GitHub or open a pull request without the user's explicit permission.**
+The canonical version of this skill lives at **https://github.com/GuidedTrack/GuidedTrackAICodingAgentSkill** (your local copy of this skill is a clone of it). Whenever you make a meaningful improvement here — a new tested pattern, a `bin/gt` fix, or a hard-won caveat worth sharing — **ask the user whether to contribute it back to that repo so everyone using the skill benefits.** The mechanics are in [CONTRIBUTING.md](CONTRIBUTING.md) (branch → commit → open a pull request). **Never push to GitHub or open a pull request without the user's explicit permission.**
 
 ## Required Workflow
 
@@ -123,23 +123,16 @@ When the user asks to upload, push, or test a program on GuidedTrack.com, follow
 
 ### Prerequisites
 
-**Before proceeding, locate `gt` and `jq`. Stop only if neither PATH nor `~/bin/` has them.**
+**Before proceeding, make sure `gt` and `jq` are installed. If either is missing, install it yourself; don't ask the user to.**
 
 ```bash
-# Check PATH first, then fall back to ~/bin/ — non-login shells (including the
-# Claude Code Bash tool) often do NOT have ~/bin on PATH even when the binaries
-# exist there. A "not found" from `command -v` does not mean the binary is missing.
-command -v gt || ls ~/bin/gt
-command -v jq || ls ~/bin/jq ~/bin/jq.exe
+# Look on PATH and in ~/bin. The Claude Code Bash tool often lacks ~/bin on PATH,
+# so a "not found" from `command -v` does not mean the binary is missing.
+command -v gt || ls ~/bin/gt 2>/dev/null
+command -v jq || ls ~/bin/jq* 2>/dev/null
 ```
 
-If both binaries exist somewhere, proceed — but note the path. When invoking `gt`, use its absolute path (e.g. `~/bin/gt`) AND prefix the command with `PATH="$HOME/bin:$PATH"` so that `gt` can find `jq` internally (it shells out to `jq` and inherits the caller's PATH).
-
-```bash
-PATH="$HOME/bin:$PATH" GT_ENV=production ~/bin/gt push -o "<program name>"
-```
-
-**If `gt` is missing:** install this skill's copy (it contains portable fixes — a plain jq filter argument instead of bash process substitution, and glob-safe selector handling so program names with spaces work; do not substitute an older copy).
+**If `gt` is missing:** install this skill's copy. It contains portable fixes (a plain jq filter argument instead of bash process substitution, glob-safe selector handling so program names with spaces work, and a lookup that finds jq in `~/bin` by itself). Do not substitute an older copy.
 
 ```bash
 mkdir -p ~/bin
@@ -147,14 +140,36 @@ cp "<path-to-this-skill>/bin/gt" ~/bin/gt
 chmod +x ~/bin/gt
 ```
 
-**If `jq` is missing:**
+**If `jq` is missing:** download a standalone copy into `~/bin`. This needs no sudo and works on Linux, macOS and Windows Git Bash:
 
-- macOS Homebrew: `brew install jq`
-- macOS direct download: `curl -fsSL -o ~/bin/jq https://github.com/jqlang/jq/releases/latest/download/jq-macos-arm64 && chmod +x ~/bin/jq` (use `jq-macos-amd64` on Intel)
-- Linux: install via the system package manager, or download `jq-linux-amd64` the same way.
-- Windows: see the Windows notes below.
+```bash
+mkdir -p ~/bin
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64)  f=jq-linux-amd64 ;;
+  Linux-aarch64) f=jq-linux-arm64 ;;
+  Darwin-arm64)  f=jq-macos-arm64 ;;
+  Darwin-x86_64) f=jq-macos-amd64 ;;
+  MINGW*|MSYS*)  f=jq-windows-amd64.exe ;;
+  *) echo "Unsupported platform: $(uname -s)-$(uname -m)"; exit 1 ;;
+esac
+out=~/bin/jq; case "$f" in *.exe) out=~/bin/jq.exe ;; esac
+curl -fsSL -o "$out" "https://github.com/jqlang/jq/releases/latest/download/$f" && chmod +x "$out"
+"$out" --version   # must print jq-1.x; anything else means the install failed
+```
 
-Do not proceed until both `gt` and `jq` are reachable (either on PATH or via `~/bin/`).
+If the download fails or is blocked (for example on a company-managed computer), stop and ask the user to install jq themselves: `brew install jq` (macOS), `sudo apt install jq` (Debian/Ubuntu), or `winget install jqlang.jq` (Windows).
+
+**After installing jq, tell the user in plain words.** Don't just say "installed jq". Use something like:
+
+> I installed jq, a small tool that `gt` needs, at `~/bin/jq`. You don't need to use it yourself. If you ever want it in your own terminal, run `brew install jq` (Mac) or `sudo apt install jq` (Linux).
+
+Do not edit the user's shell startup files (`.bashrc`, `.profile`, `.zshrc`) unless they ask.
+
+**Calling `gt` and `jq`:** call `gt` by its absolute path (`~/bin/gt`). In any command where you run `jq` yourself, put `export PATH="$HOME/bin:$PATH"` first:
+
+```bash
+GT_ENV=production ~/bin/gt push -o "<program name>"
+```
 
 ### Non-interactive credentials (optional)
 
@@ -221,6 +236,7 @@ A successful push prints `>> Updating "<name>" (id: <id>)... done` and the serve
 If the `gt` script itself misbehaves, replicate its two API calls directly with curl (validated on Mac and Windows; from Windows PowerShell call `curl.exe` explicitly, since bare `curl` in PowerShell 5.1 is an alias for `Invoke-WebRequest`):
 
 ```bash
+export PATH="$HOME/bin:$PATH"   # find a ~/bin jq install
 # 1. Find the program id (URL-encode the name; spaces become %20):
 curl -sS -u '<email>:<password>' \
   "https://www.guidedtrack.com/programs.json?query=<url-encoded-name>" \
@@ -253,6 +269,7 @@ After any push, open or run the program once, or have the user do so, and read t
 **Checking compilation without a browser.** An agent cannot read an error banner, but the same information is available over the API — this is what `gt`'s own `build` subcommand does internally. Every call is authenticated:
 
 ```bash
+export PATH="$HOME/bin:$PATH"   # find a ~/bin jq install
 E='<email>'; P='<password>'
 KEY=$(curl -sS -u "$E:$P" "https://www.guidedtrack.com/programs.json?query=<url-encoded-name>" \
   | jq -r 'map(select(.name=="<exact program name>"))[0].key')
@@ -294,7 +311,7 @@ Source: [Sharing the "Preview" Version of Your Program](https://docs.guidedtrack
 ### Windows notes
 
 - `gt` is a Bash script: on Windows run it under Git Bash — which is what the Claude Code Bash tool uses. **Never PowerShell or cmd.** In Git Bash, `~` resolves to `C:\Users\<name>`, so `~/bin` and `~/guidedtrack` are ordinary Windows folders.
-- jq is `jq.exe` on Windows; Git Bash resolves the bare name `jq` to it automatically. Install without admin rights: `curl -fsSL -o ~/bin/jq.exe https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe` — or via winget (PowerShell/cmd, installs onto PATH): `winget install jqlang.jq`.
+- jq is `jq.exe` on Windows; Git Bash resolves the bare name `jq` to it automatically. The installer in Prerequisites handles Windows (it saves `~/bin/jq.exe`). Alternative the user can run in PowerShell/cmd: `winget install jqlang.jq`.
 - This skill's `bin/gt` contains the fixes that make Windows work (native jq.exe cannot read bash process substitution; unquoted selectors word-split names with spaces). Always install this skill's copy.
 
 ### Edge Cases
