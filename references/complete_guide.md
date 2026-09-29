@@ -249,7 +249,7 @@ The full set of valid `*type:` values is: "calendar", "captcha", "checkbox", "ch
 
 ### Checkbox questions (select all that apply)
 
-`*type: checkbox` lets users select multiple options. The saved variable is a COLLECTION of the selected labels, not a single value; test membership with the `in` operator (`in` matching is case- and punctuation-sensitive: if the option is "Cat", testing `"cat" in pets` will not match). Selecting nothing is a valid response (an implicit "none of these apply"), so no "None" option is needed - say so in a `*tip`. Add `*shuffle` to randomize option order (recommended for bias avoidance):
+`*type: checkbox` lets users select multiple options. The saved variable is a COLLECTION, not a single value - of the selected LABELS for plain indented options, or of the selected VALUES when the options come from an `*answers:` collection of [label, value] pairs; test membership with the `in` operator (`in` matching is case- and punctuation-sensitive: if the option is "Cat", testing `"cat" in pets` will not match). Selecting nothing is a valid response (an implicit "none of these apply"), so no "None" option is needed - say so in a `*tip`. An empty selection saves an EMPTY collection rather than leaving the variable undefined, so `.size` (which is then 0) and `in` need no guard (source: interpreter `nodes/checkbox_question_node.js.coffee` and `nodes/collection_answer_question_node.js.coffee`). Add `*shuffle` to randomize option order (recommended for bias avoidance):
 
 ```gt
 *question: Which pets do you have?
@@ -524,6 +524,15 @@ Bob's birthday: {bobsBirthday}
 	{name}: {date}
 ```
 
+Reading a key the association does not have is a RUNTIME ERROR (`Cannot reference key "x" of hash table ...`), and so is reading a key whose value is null. Test for the key first with `in`, which on an association checks its KEYS:
+
+```gt
+*if: "nickname" in profile
+	>> nickname = profile["nickname"]
+```
+
+One exception: a bare `*if: profile["nickname"]` does not raise. `*if:` and `*while:` evaluate their condition leniently, so a missing or null key yields "undefined", which is falsy - the same rule that makes `*if: someUnsetVariable` safe. The leniency covers only a condition that is nothing but the lookup. Once the lookup is an operand of a comparison (`*if: profile["nickname"] = "Al"`) or sits on the right of `>>`, a missing key is an error again. The bare form is also the only guard that survives a key that is present but null, which `in` reports as present. This matters most for `it` inside `*success`, where a response may omit an optional field. (Source: interpreter `expression.js.coffee` `_attempt_to_dereference`, `nodes/branching_node.js.coffee`, `operator.js.coffee` `_association_contains`; exercised by `spec/javascripts/expression_spec.coffee`, "in association access".)
+
 ### Points and progress
 
 ```gt
@@ -576,6 +585,8 @@ Here is the tutorial...
 *label: mainContent
 Welcome to the main program!
 ```
+
+`*goto:` also accepts a full URL, which sends the browser there: `*goto: https://example.com/thanks`, or with interpolation `*goto: {redirectUrl}`. The target counts as a URL only when it starts with `http://` or `https://` and has a dotted host name such as `example.com`; a `localhost` address does not qualify and is treated as a label that does not exist. Before redirecting, the interpreter waits for any unsynced run data to reach the server, showing "Please hang on. We'll redirect you shortly..." meanwhile. (Source: interpreter `nodes/goto_node.js.coffee` and `is_url` in `programs.js.coffee`.)
 
 ### Services and HTTP requests
 
@@ -635,6 +646,37 @@ The way around that restriction is to set a variable inside the block and branch
 Note the `= 1`. `*if: lookupFailed` would fire for EVERYONE here, because the flag was initialised to `0` and a bare `*if:` tests definedness, not truth - see the definedness rule in "Critical Syntax Rules". Initialising the flag before the call is still right; testing it with `= 1` is what makes the guard work.
 
 `*service:` is also rejected inside `*events` handlers.
+
+#### A page reload re-runs the request
+
+When a participant reloads the page, the run resumes at the START of the current page, and a page starts at the first line executed after the previous page's question or button, not at the first visible element. A `*service:` call sitting between the previous question and the text now on screen is therefore part of the current page, and it fires AGAIN on every reload. For a read that is wasted work; for a write (submitting answers, sending an email, charging a card) it is a duplicate.
+
+The standard fix is to force a page break immediately after the call with an invisible question that advances on its own, so that a reload resumes after the request instead of before it:
+
+```gt
+*service: Survey API
+	*path: /submit
+	*method: POST
+	*send: payload
+	*success
+		>> submitted = 1
+	*error
+		>> submitted = 0
+
+*html
+	<style>
+		#countdown {visibility: hidden !important;}
+	</style>
+
+*question: {""}
+	*countdown: .1.seconds
+	*classes: hidden
+
+*if: submitted = 1
+	Thanks - your answers are saved.
+```
+
+(Source: interpreter `startup.js.coffee` `_start_where_user_left_off`, `page.js.coffee` `_node_to_come_back_to`, and `nodes/service_node.js.coffee`, where the service node is an opening node rather than page content. The hidden-question pattern is in production use.)
 
 ### Components and click handlers
 

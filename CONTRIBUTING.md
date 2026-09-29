@@ -44,6 +44,10 @@ Each of these settled a real contradiction between two versions of this skill:
 | What does `collection.sort()` accept? | `object/method_validations/sort_validation.js.coffee` | `"increasing"` / `"decreasing"`, and the argument is optional, defaulting to `"increasing"` |
 | Can `*min:` go on a number question? | `content_nodes/question.rb`, `validate_min_and_max_for_question_type` | Slider only; anything else is a compile error |
 | Is an unset variable an error, or falsy? | `nodes/branching_node.js.coffee` passes `allow_undefined_values: true`, and `nodes/node.js.coffee` maps `if` to that node; `expression.js.coffee` raises otherwise | Both — falsy inside `*if:` and `*while:` conditions, a runtime error anywhere else |
+| Does an empty checkbox leave its variable undefined? | `nodes/checkbox_question_node.js.coffee`, `nodes/collection_answer_question_node.js.coffee` | No - it saves an empty collection; with paired `*answers:` the collection holds the values, not the labels |
+| Does reading a missing association key raise? | `expression.js.coffee` `_attempt_to_dereference`; `nodes/branching_node.js.coffee`; `operator.js.coffee` `_association_contains` | Yes, except when the lookup is the whole condition of `*if:` or `*while:`, where it is falsy. `in` tests keys |
+| Can `*goto:` take a URL? | `nodes/goto_node.js.coffee`; `is_url` in `programs.js.coffee` | Yes - `http(s)://` with a dotted host; it waits for unsynced data first |
+| Does a page reload re-run a `*service:` call? | `startup.js.coffee` `_start_where_user_left_off`; `page.js.coffee` `_node_to_come_back_to` | Yes, when the call is on the current page; a hidden auto-advancing question after it prevents the repeat |
 
 ## Workflow
 
