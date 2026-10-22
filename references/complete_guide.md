@@ -74,7 +74,7 @@ The canonical output contract and validation checklist live in SKILL.md - follow
 - Variable declarations and assignments use `>> name = value` on one line.
 - Use double quotes for strings when quotes are needed.
 - For keyword values that take booleans, use `yes` and `no`, not `true` and `false`.
-- GuidedTrack has no boolean literal for variables; use `1` and `0`. **`*if: x` tests whether x is DEFINED, NOT whether it is truthy** - a variable explicitly set to `0` PASSES `*if: x`; only one that was never assigned fails it. Verified in production 2026-08-22, where a report section printed the opposite of the truth because a flag returning `0` passed a bare `*if:`. So `*if: x` asks "has x been set at all?", `*if: x = 1` is the actual truth test, and `*if: x` with an indented `*if: x = 1` beneath it is the safe idiom when x may be undefined. Writing `*if: myFlag` for a 0/1 flag is a silent bug. The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
+- GuidedTrack has no boolean literal for variables; use `1` and `0`. **`*if: x` tests whether x is DEFINED, NOT whether it is truthy** - a variable explicitly set to `0` PASSES `*if: x`, and so does one set to `""`, `[]`, or `{}`; only one that was never assigned fails it (plus the one exception below). Verified in production 2026-08-22, where a report section printed the opposite of the truth because a flag returning `0` passed a bare `*if:`. So `*if: x` asks "has x been set at all?", `*if: x = 1` is the actual truth test, and `*if: x` with an indented `*if: x = 1` beneath it is the safe idiom when x may be undefined. Writing `*if: myFlag` for a 0/1 flag is a silent bug. The full rule, with the consequences for `not`, cleanup blocks, and skipped questions, is in "Truthiness and comparisons" under Language Notes. The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
 
 Three syntax mistakes make `gt push` report success while the site quietly keeps the old version, because the program never compiles. Verified 2026-08-21/22, and the `*html` one re-tested and corrected 2026-08-24: the push reported success and the site kept the previous version until the line was fixed.
 
@@ -620,7 +620,43 @@ The service Name, `*path:`, and `*method:` are all required; `*send:`, `*success
 
 #### `it`, and what may go inside the result blocks
 
-Inside `*success` and `*error`, `it` holds the response body or the error information, already parsed — usually an association, so `it["field"]` works directly. **`it` exists only inside that block.** Copy anything you need later into a normal variable, but copy the specific fields rather than the whole response: assigning all of `it` drags the entire payload into the program's CSV export.
+Inside `*success` and `*error`, `it` holds the response body or the error information, already parsed — usually an association, so `it["field"]` works directly. In `*error` the association always has the same four keys (source: `_error_scope` in the interpreter's `nodes/service_node.js.coffee`):
+
+- `it["text"]` — the body the service returned, parsed as JSON when it was JSON, otherwise the raw string.
+- `it["code"]` — the HTTP status as a number (`404`, `400`, ...).
+- `it["status"]` — always the string `"error"`.
+- `it["error"]` — the HTTP status text.
+
+When the request never reached a server there is no HTTP status, so `it["code"]` is `""` and `it["text"]` is the string `"internet connection was lost"` (the browser was offline) or `"unknown error, please retry"` (source: `_fetch_rejection_response` in the same file). A retry loop therefore keys on the text, not the code:
+
+```gt
+>> attempts = 0
+>> shouldRetry = 1
+
+*while: shouldRetry = 1
+	>> shouldRetry = 0
+	*service: Beehiiv
+		*path: {path}
+		*method: GET
+		*success
+			>> record = it
+		*error
+			>> errorText = it.text
+			>> errorText = errorText.lowercase
+			*if: errorText.count("internet connection was lost") > 0
+				>> shouldRetry = 1
+	*if: shouldRetry = 1
+		>> attempts = attempts + 1
+		*if: attempts >= 3
+			>> shouldRetry = 0
+```
+
+Two server-side rules apply before the request goes out (source: `consume` in `app/controllers/services_controller.rb`, `regex_from` in `compiler/lib/guided_track/GT_Program.rb`, and `assemble_service_metadata` in `app/models/build.rb`):
+
+- **Only paths the compiler saw are allowed.** At compile time every `*path:` in the program and all of its subprograms becomes a pattern: literal text is matched exactly and each `{interpolation}` becomes "anything". At run time a request whose path matches none of them is refused with HTTP 403 and `it["text"]` of the form `GET /the/path not allowed on service "Name"`. A fully interpolated `*path: {path}` allows everything. Caveat, reproduced against the live proxy 2026-10-22 and not explained by the visible check: a path segment that is exactly `.` or `..` is refused even then, so a lone `.` typed as an email address produced that 403.
+- **The path is not URL-encoded for you.** It is spliced into the upstream URL as-is (source: `path_specified_by` in `app/models/service.rb`), so a non-ASCII character such as an em dash reaches the service raw; Beehiiv, for one, answers with an uninformative 400. Encode or validate interpolated values before they go into `*path:`.
+
+**`it` exists only inside that block.** Copy anything you need later into a normal variable, but copy the specific fields rather than the whole response: assigning all of `it` drags the entire payload into the program's CSV export.
 
 Requests are asynchronous, and the result blocks are correspondingly restricted — nothing that shows a new page or redirects the flow may appear inside them. The compiler rejects all of these under `*success` or `*error`: `*question`, `*button`, `*goto`, `*label`, `*program`, `*switch`, `*quit`, `*return`, `*wait`, `*clear`, `*email`, `*login`, `*experiment`, `*settings`, `*navigation`, `*points`, `*progress`, and `*maintain`. Plain text and `*if:` are fine.
 
@@ -677,6 +713,12 @@ The standard fix is to force a page break immediately after the call with an inv
 ```
 
 (Source: interpreter `startup.js.coffee` `_start_where_user_left_off`, `page.js.coffee` `_node_to_come_back_to`, and `nodes/service_node.js.coffee`, where the service node is an opening node rather than page content. The hidden-question pattern is in production use.)
+
+#### The back button re-runs code too, and variables are not rolled back
+
+When `*settings` enables `*back: yes`, pressing the back button returns to the start of the previous page and restores the execution position only. The variable heap is untouched: every `>>` assignment, counter increment, and `*service:` call between that page and the one the participant left re-executes with the variables' current values. (Source: `_go_back` and `_reset_stack_for` in the interpreter's `page.js.coffee`, which reset the stack and never touch `data.js.coffee`'s heap; verified by a test program 2026-10-22, where going back over `>> x = x + 1` and forward again left `x` at 2.)
+
+Two rules follow. Code between pages should be idempotent, or guarded by a flag that the first pass sets. And a subprogram that pauses on a `*button:` or question must finish its cleanup BEFORE that pause, not after it: if cleanup runs after the button, a participant pressing back from that page replays the caller while the subprogram's own working variables are still set, and the caller can act on them a second time. Verified in production 2026-10-22, where an error-reporting subprogram that cleaned up after its "Continue" button re-sent its own failure summary as a new error report.
 
 ### Components and click handlers
 
@@ -1057,6 +1099,46 @@ Common sub-keywords in the full language specification include:
 
 - **A class name that looks like advertising can be REMOVED from the page by a content blocker, and it looks exactly like a CSS bug.** A heading styled with a class beginning `share-` rendered on desktop and was invisible on iPhone. The markup was byte-identical, the stylesheet was verified present, and forcing `display`, `visibility`, `opacity`, `z-index` and `max-height` all did nothing - which is the signature of an element being removed from the document rather than styled out of view. Renaming the class fixed it instantly. Content and ad blockers match on class and id names, so avoid `share-`, `ad-`, `ads-`, `banner-`, `sponsor-`, `promo-` and `social-` prefixes for anything that must render; pick a neutral hook like `sc-title`. **Diagnostic:** if an element is missing on one device only and no style change brings it back, check whether the node exists in the DOM at all before spending more time on CSS.
 
+### Truthiness and comparisons
+
+The interpreter has exactly two falsy values: an undefined variable and the boolean `false` (which only exists as the result of `.decode("JSON")`). Everything else is truthy, including `""`, `0`, an empty collection, and an empty association. `not` follows the same rule. (Source: interpreter `operator.js.coffee` `_boolean_transformation` and `embedded_value.js.coffee` `is_falsey`; verified by a test program 2026-10-22.)
+
+```gt
+>> a = ""
+*if: not a
+	Never shown: "" is truthy.
+*if: a
+	Shown.
+>> z = 0
+*if: not z
+	Never shown: 0 is truthy too.
+```
+
+Three consequences:
+
+- **A cleanup block does not undefine anything.** GuidedTrack has no way to undefine a variable, so the common convention of ending a subprogram with `>> x = ""` leaves `x` defined and truthy. The next subprogram's `*if: not x` default guard then does nothing, and `x` stays `""`. Verified in production 2026-10-22: a retry library that defaulted `max_retries` with `*if: not max_retries` ran with `max_retries = ""` whenever another library had cleaned up first, and because `0 >= ""` is true (see below) it gave up on the first failure without retrying. Guard both cases:
+
+  ```gt
+  *if: not max_retries
+  	>> max_retries = 3
+
+  *if: max_retries = ""
+  	>> max_retries = 3
+  ```
+
+  The second test is safe for any type: `0 = ""`, `[] = ""`, `{} = ""`, and `false = ""` are all false, and it does not raise for a value of another type.
+
+- **A skipped `*blank` text question saves `""`, not undefined.** So `*if: not answer` does not detect that the participant left it blank; test `*if: answer = ""` or `*if: answer.size = 0` instead. Verified by a test program 2026-10-22.
+
+- **The `in` operator on a string matches single characters only.** `"a" in "abc"` is true, `"ab" in "abc"` is false, and `"abc" in "abc"` is false. Use `.count("ab") > 0` for a substring test. On a collection, `in` compares without coercion, so `"3" in [3]` is false. (Source: `_collection_contains` in `operator.js.coffee`; verified 2026-10-22.)
+
+Comparison rules (source: the numeric operator table and `_is_equal` in `operator.js.coffee`; verified 2026-10-22):
+
+- `=` coerces a numeric string to a number first, so `"3" = 3` is true. An empty or whitespace-only string is never coerced, so `0 = ""` is false.
+- `<`, `<=`, `>`, and `>=` are plain JavaScript comparisons with no GuidedTrack-side coercion, so `0 >= ""` is true and `0 < ""` is false. Never let an ordering comparison see a `""` that a cleanup block left behind.
+- Comparing an undefined variable raises "You tried to use the variable 'x', but 'x' is not defined." The leniency that makes a bare `*if: x` safe applies only when the whole condition is the variable (or an association lookup); as soon as it is an operand of `=`, `<`, `not`, `and`, or `or`, it must be defined. Put the `*if: not x` guard first and the comparison second, as in the pattern above.
+- `.clean` trims whitespace from both ends and leaves interior whitespace alone: `"  x  ".clean` has size 1 and `"a b".clean` has size 3 (verified 2026-10-22).
+
 ## Common Misconceptions
 
 GuidedTrack does not have:
@@ -1074,5 +1156,5 @@ Important distinctions:
 - Initialize variables before incrementing them.
 - Collections are 1-indexed.
 - `*program: name` runs another program inline and RETURNS to the next line; caller and subprogram share ONE variable scope (all variables are effectively global across the call). There are no arguments or return values - the convention is to set `in_`-prefixed variables before the call and read `out_`-prefixed variables after it (e.g. `>> in_namesToSort = myNames` ... `*program: sort names and values - public` ... `>> sortedNames = out_sortedNames`).
-- Because scope is shared, a reusable subprogram should give its own inputs safe defaults with the `*if: not variableName` idiom (an unset variable is falsy): `*if: not numberToRate` / tab / `>> numberToRate = 10`.
+- Because scope is shared, a reusable subprogram should give its own inputs safe defaults with the `*if: not variableName` idiom (an unset variable is falsy): `*if: not numberToRate` / tab / `>> numberToRate = 10`. If any caller or earlier subprogram may have cleaned the variable up with `>> numberToRate = ""`, add the matching `*if: numberToRate = ""` guard - `""` is truthy, so the `not` form alone misses it (see "Truthiness and comparisons").
 - Public library subprograms have names ending in "- public" (e.g. "general consent form - public", "update progress - public"); call them by exact name, including that suffix.

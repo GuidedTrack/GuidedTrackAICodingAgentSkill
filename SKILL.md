@@ -246,6 +246,8 @@ Use `gt push .` only when the user explicitly wants to push every file in the di
 
 A successful push prints `>> Updating "<name>" (id: <id>)... done` and the server compiles the program asynchronously.
 
+**Participants who are already mid-run do not see the new version until their browser reloads the run.** A run fetches the program's compiled contents when the page loads and keeps them in memory, so an open tab keeps running the old version, and a tab reloaded later switches to the newest build part-way through. That is the default ("always latest"); the program's Settings → Versioning page offers "consistent", which pins each run to the build it started on. Keep this in mind when a user reports that a participant still hit a bug you have already pushed a fix for, or when a fix changes which variables exist between pages. (Source: `versioning_mode` in the Rails app's `app/models/program_settings.rb`, `load_build_for` in `app/models/program.rb`, and `run.load_program_contents` in the interpreter's `program_contents.js.coffee`.)
+
 ### Fallback — direct API calls
 
 If the `gt` script itself misbehaves, replicate its two API calls directly with curl (validated on Mac and Windows; from Windows PowerShell call `curl.exe` explicitly, since bare `curl` in PowerShell 5.1 is an alias for `Invoke-WebRequest`):
@@ -257,9 +259,12 @@ curl -sS -u '<email>:<password>' \
   "https://www.guidedtrack.com/programs.json?query=<url-encoded-name>" \
   | jq 'map(select(.name == "<exact program name>"))[0].id'
 
-# 2. PUT the file contents to that id:
+# 2. Read the current description, then PUT the file contents to that id,
+#    echoing the description back (see the note below):
+DESC=$(curl -sS -u '<email>:<password>' "https://www.guidedtrack.com/programs/<id>.json" \
+  | jq -r '.description // ""')
 cat "./<program name>" \
-  | jq --slurp --raw-input '{contents: ., program: {description: ""}}' \
+  | jq --slurp --raw-input --arg desc "$DESC" '{contents: ., program: {description: $desc}}' \
   | curl -sS -X PUT -u '<email>:<password>' -d @- \
       -H 'Content-Type: application/json' \
       "https://www.guidedtrack.com/programs/<id>.json"
@@ -270,6 +275,8 @@ curl -sS -u '<email>:<password>' "https://www.guidedtrack.com/delayed_jobs/<job_
 ```
 
 The PUT response also contains `edit_program_url` and a preview `run_path` — share these with the user.
+
+**The `program` object overwrites whatever it names.** `program: {description: ""}` erases the program's description on every push; omitting `program` or sending `program: {}` is a 400; a non-empty `program` without a `description` key leaves the description alone. That is why the snippet above reads the description first and sends it back. (Source: `update` and `program_params` in the Rails app's `programs_controller.rb`; each case probed against the live API 2026-10-22. Earlier versions of this skill's `bin/gt` sent the empty string and silently wiped descriptions.)
 
 To download a program's current source, use this skill's `gt pull -o "<program name>"` (writes `./<program name>`; prompts for email and password only — no production confirmation, since pulling is read-only). It extracts the source from the `/programs/{id}/edit` page's `<textarea>`; if `gt` is unavailable, fetch that page while authenticated and HTML-unescape the largest textarea yourself.
 

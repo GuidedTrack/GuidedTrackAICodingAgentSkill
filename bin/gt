@@ -104,10 +104,17 @@ push() {
   do
     if [ -f "./$file" ]
     then
-      id=`_find_program "$file" | jq '.id' 2>&1`
+      program_json=`_find_program "$file"`
 
       if [ $? -eq 0 ]
       then
+        id=`echo "$program_json" | jq '.id' 2>&1`
+        # The PUT's `program` object overwrites whatever it names, so the
+        # current description is read here and sent back unchanged. Sending
+        # `description: ""` (as this script once did) wipes it on every push,
+        # and omitting `program` altogether is rejected with a 400.
+        description=`echo "$program_json" | jq --raw-output '.description // ""' 2>&1`
+
         if [ $id = "null" ]
         then
           printf ">> Program named \"$file\" not found, skipping... "
@@ -115,11 +122,11 @@ push() {
           printf ">> Updating \"${file}\" (id: $id)... "
         fi
       else
-        echo $id >&2
+        echo $program_json >&2
         exit 1
       fi
 
-      result=$(cat "./$file" | jq --slurp --raw-input '{contents: ., program: {description: ""}}' | curl -X PUT -u "${email}:${password}" -d @- -H 'Content-Type: application/json' "$host/programs/$id.json" 2>&1)
+      result=$(cat "./$file" | jq --slurp --raw-input --arg desc "$description" '{contents: ., program: {description: $desc}}' | curl -X PUT -u "${email}:${password}" -d @- -H 'Content-Type: application/json' "$host/programs/$id.json" 2>&1)
       if [ $? -eq 0 ]
       then
         echo "done"

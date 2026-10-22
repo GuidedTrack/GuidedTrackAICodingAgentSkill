@@ -374,6 +374,8 @@ Working on your results...
 - **`*goto` indented under `*error` or `*success` will not compile.** GuidedTrack rejects the program: "The keyword *error cannot have *goto indented underneath it". Set a flag inside the block and branch at column 0 after the `*service` call - which is what you need anyway, since `*error` does not stop the program.
 - **Two features of one route reading the same request key.** A route that both chose an "ideal" record and returned a scored list read `min_age`/`max_age` for both, so sending an age range silently shrank the scored list from 430 items to 31 while leaving it unfiltered in every other respect. Prefix keys per feature (`score_min_age` vs `min_age`).
 - **Sensitive routes are public URLs.** Any quota, permission, or eligibility rule that matters must be enforced inside the route, not only in the program.
+- **A 403 whose `it["text"]` says `... not allowed on service "Name"` is GuidedTrack refusing the path, not the route.** The compiler records every `*path:` it saw (interpolations count as "anything") and the proxy refuses anything else. Check that the path is spelled the way the code spells it, and see the allowlist rule in [complete_guide.md](complete_guide.md#it-and-what-may-go-inside-the-result-blocks) for the `.`/`..` caveat.
+- **`it["code"]` is `""` when the browser was offline.** The error association then carries `it["text"]` of `"internet connection was lost"`; a retry loop should key on that text. The full shape of `it` in `*error` is in [complete_guide.md](complete_guide.md#it-and-what-may-go-inside-the-result-blocks).
 
 ## Further reading
 
