@@ -324,6 +324,8 @@ A program has two shareable URLs that differ only in the last path segment:
 
 **Default to the preview link whenever the user is testing their own program, and give the run link only when they are ready to recruit real participants.** Handing over a run link for testing silently contaminates the dataset: every click-through becomes a row the user has to find and exclude by hand afterwards. Say which link you are giving and why.
 
+**Preview runs send `*email` for real.** Nothing is simulated: each `*email` in a preview run is queued through a `POST /scheduled_emails` and delivered. Verified 2026-10-24, when nine scripted preview runs of a one-time-passcode program put nine code emails in the account owner's inbox. When a program emails the participant, plan the number of test runs, use an address you can read, and say so to the user before starting.
+
 Preview mode also surfaces error messages that a normal run hides ([docs](https://docs.guidedtrack.com/manual/using-the-guidedtrack-website/sharing-your-program-with-users/#embedding-the-run-or-preview-version-of-a-program-on-a-website)), which makes it the better debugging surface as well.
 
 A test run landing as real data is recoverable rather than fatal: the Data page toggles any row between "data" and "test" ([docs](https://docs.guidedtrack.com/manual/using-the-guidedtrack-website/looking-at-the-data/#test-or-data)).
@@ -358,7 +360,7 @@ If the user would rather not host on GuidedTrack, its docs recommend Imgbox or C
 
 ## Downloading And Reading Run Data
 
-All methods require authentication. The reliable approach is a real browser session: GET /users/sign_in, extract the form's authenticity_token, POST it back with user[email] and user[password], and keep the cookies. (Plain HTTP Basic auth also works for most GET endpoints, but not all.)
+All methods require authentication. The reliable approach is a real browser session: GET /users/sign_in, extract the form's authenticity_token, POST it back with user[email] and user[password], and keep the cookies. (Plain HTTP Basic auth also works for most GET endpoints, but not all. Verified 2026-10-24 with `curl -u "$EMAIL:$PASSWORD"` on `/programs/{id}/edit` and `/programs/{id}/runs?time_zone=UTC`, and with Playwright's `httpCredentials` on `/programs/{key}/test`, which is the page the `/preview` wrapper loads in its iframe; drive that URL directly and a headless browser can run a preview without the sign-in form.)
 
 ### The data CSV (primary method - same file as the Data page's download button)
 
@@ -391,6 +393,19 @@ each `<tr>`'s `<td>` cells for one run, then zip them together.
   reliable way to go.
 - Values arrive HTML-escaped; unescape them. Collections and associations appear as their
   literal text, the same as in the CSV.
+- **A variable that only in-progress runs have set may have no column yet.** On 2026-10-24 the page showed, for six in-progress preview runs, only the columns earlier runs had established; variables those runs set for the first time (in the parent program and in a sub-program alike) were absent, while the client's own upload of the same row carried them. For a run that is still going, read the upload instead (next section).
+
+### A run's variables while it is still in progress (scripted runs)
+
+The interpreter posts the run's whole data row to `POST /programs/{key}/runs/{runId}/update_csv_row` as a form field `csv_data` holding a JSON object keyed by variable name, on every page change, including the hidden auto-advancing pages. In a Playwright or Puppeteer session, intercept that request and parse the field; the row holds every variable the run has set, sub-program variables included, before the runs page shows a column for them. Verified 2026-10-24: a script read a six-digit code the moment the program generated it, then the send count, the attempt count and the verification flag after each page. The other uploads are `POST /run_event/write` (display and control-flow events, URL-encoded JSON in an `events` field; it carries node ids and `*goto` targets but no variable values) and `POST /scheduled_emails` (one per `*email`).
+
+```js
+let row = {}
+page.on("request", r => {
+  if (r.method() !== "POST" || !/update_csv_row/.test(r.url())) return
+  row = { ...row, ...JSON.parse(new URLSearchParams(r.postData()).get("csv_data")) }
+})
+```
 
 ### Choosing a method
 
@@ -400,6 +415,7 @@ each `<tr>`'s `<td>` cells for one run, then zip them together.
 | the last N runs, or a run you just did | the runs page |
 | a preview/test run's variables | the runs page (the CSV excludes those runs) |
 | one run's answers while it is still in progress | `/runs/{runId}/answers` |
+| a scripted run's variables while it is still in progress | intercept its `update_csv_row` upload |
 | just run timestamps and ids | `/programs/{id}/runs.json` |
 
 **Do not reach for the CSV to check on one run.** On a mature program that could be a large
@@ -411,6 +427,30 @@ download to read a handful of fields that are one page fetch away.
 - `GET /runs/{runId}/answers` - HTML table of one run's answers: question text, answer, timestamp. Parse the `<tr>` rows. Includes test runs, and works while a run is still in progress (great for live monitoring).
 - Each answer row links to `/programs/{id}/answers/<hash>` - one page per question NODE. Questions with IDENTICAL text share one hash, distinguished by suffix `_<n>` where n is the 0-INDEXED instance number in program source order. This recovers WHICH of many identically-worded questions an answer belongs to (e.g. which stimulus a rating refers to). Validate any suffix-to-item mapping against known constraints of a run (expected item count, known filters) before trusting it - the indexing is easy to get off by one.
 - Program SOURCE: use this skill's `gt pull -o "<program name>"`, or fetch the `/programs/{id}/edit` page - the source sits in the largest `<textarea>` (HTML-unescape it).
+
+### Debugging a frozen run
+
+A tab that stops responding during a run, with no error modal and no console message, is almost always a `*goto` cycle that never reaches a rendering node (see "Jumping with *goto and *label" in the guide). Nothing in the page can be read while it spins, because the interpreter runs on the page's main thread; `page.evaluate` and screenshots hang too. Pause the JavaScript instead and read the interpreter's own stack. Verified 2026-10-24 in headless Chromium through Playwright:
+
+```js
+const cdp = await page.context().newCDPSession(page)
+await cdp.send("Debugger.enable")
+// ... drive the run until it freezes ...
+const paused = new Promise(resolve => cdp.once("Debugger.paused", resolve))
+await cdp.send("Debugger.pause")
+const { callFrames } = await paused
+for (const frame of callFrames) {
+  if (!/find_content_node|_fall_through/.test(frame.functionName) || !frame.this?.objectId) continue
+  const props = (await cdp.send("Runtime.getProperties", { objectId: frame.this.objectId, ownProperties: true })).result
+  const program = props.find(p => p.name === "my_program")?.value?.value
+  const node = props.find(p => p.name === "runtime_node")?.value?.objectId
+  const np = (await cdp.send("Runtime.getProperties", { objectId: node, ownProperties: true })).result
+  console.log(program, np.find(p => p.name === "line_number")?.value?.value, np.find(p => p.name === "type")?.value?.value)
+}
+await cdp.send("Debugger.resume")
+```
+
+Each `find_content_node` frame's `this` carries `my_program` (the program name, sub-programs included) and `runtime_node` with `line_number` and `type` (`goto`, `if`, `label`, `console` for a `>>` line, `program`). Pause three or four times a second apart; the lines that recur are the cycle. The line numbers count from the top of that program's source as stored on the site. Before reaching for this, give the script a watchdog: a `setTimeout` that screenshots, logs, and exits, so a freeze costs minutes rather than hours.
 
 ### Dead ends (do not rediscover these)
 

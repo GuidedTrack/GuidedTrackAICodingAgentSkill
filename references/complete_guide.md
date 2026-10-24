@@ -586,6 +586,8 @@ Here is the tutorial...
 Welcome to the main program!
 ```
 
+**A `*goto` cycle that reaches no rendering node freezes the browser tab.** The interpreter walks from node to node until something renders; a jump back to a label whose whole path to the same `*goto` is assignments, `*if` blocks whose conditions keep failing, and sub-program calls never yields, so the tab stops responding with no error modal, no console message, and no timeout. It looks like a slow page or a broken browser, not like a program bug. Verified 2026-10-24: a sub-program asked for an email address under `*if: not email_address`, blanked the address with `>> email_address = ""` when validation failed, and jumped back to the label; because `""` is truthy (see "Truthiness and comparisons"), the question was skipped and the validator ran forever, freezing headless Chromium for five hours. Before writing a backward `*goto`, check that every path around the cycle either renders something (a question, text, a `*button`) or changes a variable the exit condition reads. "Debugging a frozen run" in `SKILL.md` shows how to find the cycle in a frozen page.
+
 `*goto:` also accepts a full URL, which sends the browser there: `*goto: https://example.com/thanks`, or with interpolation `*goto: {redirectUrl}`. The target counts as a URL only when it starts with `http://` or `https://` and has a dotted host name such as `example.com`; a `localhost` address does not qualify and is treated as a label that does not exist. Before redirecting, the interpreter waits for any unsynced run data to reach the server, showing "Please hang on. We'll redirect you shortly..." meanwhile. (Source: interpreter `nodes/goto_node.js.coffee` and `is_url` in `programs.js.coffee`.)
 
 ### Services and HTTP requests
@@ -1129,6 +1131,19 @@ Three consequences:
   The second test is safe for any type: `0 = ""`, `[] = ""`, `{} = ""`, and `false = ""` are all false, and it does not raise for a value of another type.
 
 - **A skipped `*blank` text question saves `""`, not undefined.** So `*if: not answer` does not detect that the participant left it blank; test `*if: answer = ""` or `*if: answer.size = 0` instead. Verified by a test program 2026-10-22.
+
+- **A question guarded by `*if: not x` is skipped once `x` has been blanked.** The pattern "ask for `x` only when the caller did not supply it, and blank `x` to ask again" reads naturally and loops forever, because after `>> x = ""` the guard is false and the question never renders; if the re-ask is a backward `*goto`, the page freezes (see "Jumping with *goto and *label"). Normalise first, then test for emptiness (verified 2026-10-24 in a production library program):
+
+  ```gt
+  *if: not email_address
+  	>> email_address = ""
+
+  *label: askEmail
+
+  *if: email_address = ""
+  	*question: Email address:
+  		*save: email_address
+  ```
 
 - **The `in` operator on a string matches single characters only.** `"a" in "abc"` is true, `"ab" in "abc"` is false, and `"abc" in "abc"` is false. Use `.count("ab") > 0` for a substring test. On a collection, `in` compares without coercion, so `"3" in [3]` is false. (Source: `_collection_contains` in `operator.js.coffee`; verified 2026-10-22.)
 
